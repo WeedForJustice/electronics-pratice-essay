@@ -1,0 +1,160 @@
+<p><link rel="stylesheet" type="text/css" href="splendor.css"></p>
+<h1 id="electronics-study">Electronics Study</h1>
+<h2 id="introduction">Introduction</h2>
+<h3 id="motivation">Motivation</h3>
+<p>Once upon a time, I was outside my dad’s office, and I smell something wrong: a hard-to-breathe gas smell. I immediately rushed to a worker nearby, and found out the cause is a leaking gas tube.</p>
+<p><img src="gas-can.jpg" /></p>
+<p>Therefore, combining my interest in computers in general and the incident, I decided to design my very own gas detector that comes with some sort of IoT functionality.</p>
+<h3 id="target">Target</h3>
+<p>Make a IoT-enabled, easy to DIY, modular and commercially viable product that detects flammable gas and carbon monoxide, and warns the owner under abnormal circumstances.</p>
+<h2 id="project-preparation">Project Preparation</h2>
+<h3 id="materials">Materials</h3>
+<ul>
+<li>Functional parts
+<ul>
+<li>Raspberry Pi 4B, 4GiB RAM</li>
+<li>MQ-9 Flammable Gas and CO Sensor Module.</li>
+<li>16x2 Text LCD Module.</li>
+</ul></li>
+<li>Packaging
+<ul>
+<li>Hard paper (2mm)</li>
+<li>Styrofoam glue</li>
+<li>Marker (Optoinal)</li>
+</ul></li>
+</ul>
+<h3 id="prerequsite-skills">Prerequsite skills</h3>
+<p>You will need to know:</p>
+<ul>
+<li>Basic Python</li>
+<li>Basic Linux coreutils’ usage</li>
+</ul>
+<h3 id="wiring">Wiring</h3>
+<ul>
+<li><p>Breadboard Wiring:</p>
+<p><img src="wiring.png" /></p></li>
+<li><p>16x2 LCD Pinout</p>
+<p><img src="16x2-lcd-pinout.png" /></p></li>
+<li><p>Raspberry Pi 4 GPIO Pinout:</p>
+<p><img src="GPIO.png" /></p></li>
+</ul>
+<h2 id="software">Software</h2>
+<h3 id="system">System</h3>
+<p>I am a advenced Linux user myself, so I chose to install Arch Linux ARM on the Pi. Here is how I installed it:</p>
+<ol type="1">
+<li><p>Download a <a href="https://olegtown.pw/Public/ArchLinuxArm/RPi4/rootfs/">modified version</a> of Arch Linux ARM image that is built for <code>aarch64</code> (64-bit ARM) architecture.</p></li>
+<li><p>Extract the tarball.</p>
+<pre><code># dd if=ArchLinuxARM-rpi-4-aarch64-2020-05-06.tar.gz of=/dev/sdX status=progess</code></pre></li>
+<li><p>Unmount the SD card and insert it to the Pi.</p></li>
+<li><p>Login as <code>root</code>, whose password is also <code>root</code>.</p></li>
+<li><p>Add a user repository for Pi’s aarch64 kernals.</p>
+<pre><code>/etc/pacman.conf
+
+[raspi_aarch64]
+SigLevel = Optional TrustAll
+Server = http://107.145.175.222:8000/my_repo/aarch64</code></pre></li>
+<li><p>Do a full system upgrade, and install some programming tools</p>
+<pre><code># pacman -Syyuu neovim ranger python-pip networkmanager cronie</code></pre></li>
+<li><p>Configure NetworkManager</p>
+<pre><code># systemctl enable --now NetworkManager.service
+# nmtui</code></pre></li>
+<li><p>Install Python modules</p>
+<pre><code># pip install -U pip RPi.GPIO RPLCD fbchat</code></pre></li>
+<li><p>Enable auto login</p>
+<pre><code># systemctl edit getty@tty1
+[Service]
+ExecStart=
+ExecStart=-/usr/bin/agetty --autologin username --noclear %I $TERM</code></pre></li>
+<li><p>Running A Python Script At Boot Using Cron</p>
+<pre><code># systemctl enable --now cronie.service
+# sudo crontab -e
+
+@reboot python /home/root/main.py &amp;</code></pre></li>
+<li><p>Create a dummy Facebook and Google account and set them up.</p></li>
+</ol>
+<h3 id="code">Code</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true"></a><span class="co"># ~/main.py</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true"></a><span class="im">import</span> RPi.GPIO <span class="im">as</span> GPIO</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true"></a><span class="im">from</span> RPLCD <span class="im">import</span> CharLCD</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true"></a><span class="im">import</span> time</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true"></a><span class="im">import</span> socket</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true"></a><span class="im">import</span> threading</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true"></a><span class="im">from</span> fbchat <span class="im">import</span> Client</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true"></a><span class="im">from</span> fbchat.models <span class="im">import</span> <span class="op">*</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true"></a><span class="im">import</span> sys</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true"></a></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true"></a>debug <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true"></a>recieveID <span class="op">=</span> <span class="st">&#39;100026934047664&#39;</span>  <span class="co"># Chengxuan He</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true"></a>loginEmail <span class="op">=</span> <span class="st">&#39;yorkpasquale@gmail.com&#39;</span>  <span class="co"># york.pasquale</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true"></a>loginPwd <span class="op">=</span> <span class="st">&#39;KGLuU4Eg&#39;</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true"></a></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true"></a></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true"></a><span class="co"># https://stackoverflow.com/questions/166506/finding-local-ip-addresses-using-pythons-stdlib</span></span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true"></a><span class="kw">def</span> ip_addr(): <span class="cf">return</span> [l <span class="cf">for</span> l <span class="kw">in</span> ([ip <span class="cf">for</span> ip <span class="kw">in</span> socket.gethostbyname_ex(socket.gethostname())[<span class="dv">2</span>] <span class="cf">if</span> <span class="kw">not</span> ip.startswith(<span class="st">&quot;127.&quot;</span>)][:<span class="dv">1</span>], [</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true"></a>    [(s.<span class="ex">connect</span>((<span class="st">&#39;8.8.8.8&#39;</span>, <span class="dv">53</span>)), s.getsockname()[<span class="dv">0</span>], s.close()) <span class="cf">for</span> s <span class="kw">in</span> [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][<span class="dv">0</span>][<span class="dv">1</span>]]) <span class="cf">if</span> l][<span class="dv">0</span>][<span class="dv">0</span>]</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true"></a></span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true"></a></span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true"></a><span class="kw">def</span> onMQ9FallingEdge(channel):</span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true"></a>    emergencyMessage <span class="op">=</span> <span class="st">&#39;🔥🔥🔥 WARNING: FLAMMABLE GAS CONCENTRATION TOO HIGH! 🔥🔥🔥&#39;</span></span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true"></a>    client.send(Message(text<span class="op">=</span>emergencyMessage), thread_id<span class="op">=</span>client.uid)</span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true"></a>    client.send(Message(text<span class="op">=</span>emergencyMessage), thread_id<span class="op">=</span>recieveID)</span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true"></a></span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true"></a></span>
+<span id="cb8-29"><a href="#cb8-29" aria-hidden="true"></a><span class="kw">class</span> EchoBot(Client):</span>
+<span id="cb8-30"><a href="#cb8-30" aria-hidden="true"></a>    <span class="kw">def</span> onMessage(<span class="va">self</span>, author_id, message_object, thread_id, thread_type, <span class="op">**</span>kwargs):</span>
+<span id="cb8-31"><a href="#cb8-31" aria-hidden="true"></a>        <span class="va">self</span>.markAsDelivered(thread_id, message_object.uid)</span>
+<span id="cb8-32"><a href="#cb8-32" aria-hidden="true"></a>        <span class="va">self</span>.markAsRead(thread_id)</span>
+<span id="cb8-33"><a href="#cb8-33" aria-hidden="true"></a></span>
+<span id="cb8-34"><a href="#cb8-34" aria-hidden="true"></a>        <span class="bu">print</span>(<span class="st">&quot;</span><span class="sc">{}</span><span class="st"> from </span><span class="sc">{}</span><span class="st"> in </span><span class="sc">{}</span><span class="st">&quot;</span>.<span class="bu">format</span>(</span>
+<span id="cb8-35"><a href="#cb8-35" aria-hidden="true"></a>            message_object, thread_id, thread_type.name))</span>
+<span id="cb8-36"><a href="#cb8-36" aria-hidden="true"></a></span>
+<span id="cb8-37"><a href="#cb8-37" aria-hidden="true"></a>        <span class="co"># If you&#39;re not the author, echo</span></span>
+<span id="cb8-38"><a href="#cb8-38" aria-hidden="true"></a>        <span class="cf">if</span> author_id <span class="op">!=</span> <span class="va">self</span>.uid:</span>
+<span id="cb8-39"><a href="#cb8-39" aria-hidden="true"></a>            <span class="va">self</span>.send(Message(text<span class="op">=</span><span class="st">&#39;Time: </span><span class="sc">{}</span><span class="ch">\n</span><span class="st">Mode: </span><span class="sc">{}</span><span class="ch">\n</span><span class="st">Local IP address: </span><span class="sc">{}</span><span class="ch">\n</span><span class="st">MQ-9 Status: </span><span class="sc">{}</span><span class="ch">\n</span><span class="st">Facebok Messenger: </span><span class="sc">{}</span><span class="st">&#39;</span></span>
+<span id="cb8-40"><a href="#cb8-40" aria-hidden="true"></a>                              .<span class="bu">format</span>(time.strftime(<span class="st">&#39;%Y-%m-</span><span class="sc">%d</span><span class="st"> %H:%M:%S&#39;</span>, time.localtime()),</span>
+<span id="cb8-41"><a href="#cb8-41" aria-hidden="true"></a>                                      <span class="st">&#39;Debug&#39;</span> <span class="cf">if</span> debug <span class="cf">else</span> <span class="st">&#39;Normal&#39;</span>,</span>
+<span id="cb8-42"><a href="#cb8-42" aria-hidden="true"></a>                                      ip_addr(),</span>
+<span id="cb8-43"><a href="#cb8-43" aria-hidden="true"></a>                                      <span class="st">&#39;Safe&#39;</span> <span class="cf">if</span> GPIO.<span class="bu">input</span>(<span class="dv">11</span>) <span class="cf">else</span> <span class="st">&#39;Warn&#39;</span>,</span>
+<span id="cb8-44"><a href="#cb8-44" aria-hidden="true"></a>                                      <span class="st">&#39;Connected&#39;</span> <span class="cf">if</span> chat_thread.is_alive() <span class="cf">else</span> <span class="st">&#39;Error&#39;</span>)),</span>
+<span id="cb8-45"><a href="#cb8-45" aria-hidden="true"></a>                      thread_id<span class="op">=</span>thread_id,</span>
+<span id="cb8-46"><a href="#cb8-46" aria-hidden="true"></a>                      thread_type<span class="op">=</span>thread_type)</span>
+<span id="cb8-47"><a href="#cb8-47" aria-hidden="true"></a></span>
+<span id="cb8-48"><a href="#cb8-48" aria-hidden="true"></a></span>
+<span id="cb8-49"><a href="#cb8-49" aria-hidden="true"></a><span class="cf">try</span>:</span>
+<span id="cb8-50"><a href="#cb8-50" aria-hidden="true"></a>    client <span class="op">=</span> EchoBot(loginEmail, loginPwd)</span>
+<span id="cb8-51"><a href="#cb8-51" aria-hidden="true"></a><span class="cf">except</span>:</span>
+<span id="cb8-52"><a href="#cb8-52" aria-hidden="true"></a>    isLoggedIn <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb8-53"><a href="#cb8-53" aria-hidden="true"></a>chat_thread <span class="op">=</span> threading.Thread(target<span class="op">=</span>client.listen)</span>
+<span id="cb8-54"><a href="#cb8-54" aria-hidden="true"></a>chat_thread.start()</span>
+<span id="cb8-55"><a href="#cb8-55" aria-hidden="true"></a></span>
+<span id="cb8-56"><a href="#cb8-56" aria-hidden="true"></a>GPIO.setwarnings(<span class="va">False</span>)</span>
+<span id="cb8-57"><a href="#cb8-57" aria-hidden="true"></a>lcd <span class="op">=</span> CharLCD(numbering_mode<span class="op">=</span>GPIO.BOARD, cols<span class="op">=</span><span class="dv">16</span>, rows<span class="op">=</span><span class="dv">2</span>,</span>
+<span id="cb8-58"><a href="#cb8-58" aria-hidden="true"></a>              pin_rs<span class="op">=</span><span class="dv">37</span>, pin_e<span class="op">=</span><span class="dv">35</span>, pins_data<span class="op">=</span>[<span class="dv">33</span>, <span class="dv">31</span>, <span class="dv">29</span>, <span class="dv">23</span>])</span>
+<span id="cb8-59"><a href="#cb8-59" aria-hidden="true"></a>GPIO.setup(<span class="dv">11</span>, GPIO.IN)  <span class="co"># MQ-9 Dout</span></span>
+<span id="cb8-60"><a href="#cb8-60" aria-hidden="true"></a>GPIO.add_event_detect(</span>
+<span id="cb8-61"><a href="#cb8-61" aria-hidden="true"></a>    <span class="dv">11</span>, GPIO.FALLING, callback<span class="op">=</span>onMQ9FallingEdge, bouncetime<span class="op">=</span><span class="dv">2000</span>)</span>
+<span id="cb8-62"><a href="#cb8-62" aria-hidden="true"></a></span>
+<span id="cb8-63"><a href="#cb8-63" aria-hidden="true"></a><span class="cf">try</span>:</span>
+<span id="cb8-64"><a href="#cb8-64" aria-hidden="true"></a>    blinkState <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb8-65"><a href="#cb8-65" aria-hidden="true"></a>    running <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb8-66"><a href="#cb8-66" aria-hidden="true"></a>    <span class="cf">while</span> running:</span>
+<span id="cb8-67"><a href="#cb8-67" aria-hidden="true"></a>        <span class="cf">try</span>:</span>
+<span id="cb8-68"><a href="#cb8-68" aria-hidden="true"></a>            lcd.write_string((<span class="st">&#39;R&#39;</span> <span class="cf">if</span> blinkState <span class="cf">else</span> <span class="st">&#39; &#39;</span>) <span class="op">+</span> <span class="st">&#39; &#39;</span> <span class="op">+</span> ip_addr())</span>
+<span id="cb8-69"><a href="#cb8-69" aria-hidden="true"></a>        <span class="cf">except</span> <span class="pp">OSError</span>:</span>
+<span id="cb8-70"><a href="#cb8-70" aria-hidden="true"></a>            lcd.clear()</span>
+<span id="cb8-71"><a href="#cb8-71" aria-hidden="true"></a>            lcd.write_string((<span class="st">&#39;E&#39;</span> <span class="cf">if</span> blinkState <span class="cf">else</span> <span class="st">&#39; &#39;</span>) <span class="op">+</span> <span class="st">&#39;  No IP Address&#39;</span>)</span>
+<span id="cb8-72"><a href="#cb8-72" aria-hidden="true"></a>        lcd.crlf()</span>
+<span id="cb8-73"><a href="#cb8-73" aria-hidden="true"></a>        lcd.write_string(<span class="st">&#39;MQ-9:&#39;</span> <span class="op">+</span> (<span class="st">&#39;Safe&#39;</span> <span class="cf">if</span> GPIO.<span class="bu">input</span>(<span class="dv">11</span>) <span class="cf">else</span> <span class="st">&#39;Warn&#39;</span>))</span>
+<span id="cb8-74"><a href="#cb8-74" aria-hidden="true"></a>        lcd.write_string(<span class="st">&#39; FB:&#39;</span> <span class="op">+</span> (<span class="st">&#39;OK&#39;</span> <span class="cf">if</span> chat_thread.is_alive() <span class="cf">else</span> <span class="st">&#39;NO&#39;</span>))</span>
+<span id="cb8-75"><a href="#cb8-75" aria-hidden="true"></a>        blinkState <span class="op">=</span> <span class="kw">not</span> blinkState</span>
+<span id="cb8-76"><a href="#cb8-76" aria-hidden="true"></a>        time.sleep(<span class="dv">1</span>)</span>
+<span id="cb8-77"><a href="#cb8-77" aria-hidden="true"></a>        lcd.clear()</span>
+<span id="cb8-78"><a href="#cb8-78" aria-hidden="true"></a><span class="cf">except</span> (<span class="pp">KeyboardInterrupt</span>, <span class="pp">EOFError</span>):</span>
+<span id="cb8-79"><a href="#cb8-79" aria-hidden="true"></a>    running <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb8-80"><a href="#cb8-80" aria-hidden="true"></a><span class="cf">finally</span>:</span>
+<span id="cb8-81"><a href="#cb8-81" aria-hidden="true"></a>    lcd.clear()</span>
+<span id="cb8-82"><a href="#cb8-82" aria-hidden="true"></a>    lcd.write_string(<span class="st">&#39;E &#39;</span> <span class="op">+</span> ip_addr() <span class="op">+</span> <span class="st">&#39;</span><span class="ch">\n\r</span><span class="st">Py Not Running&#39;</span>)</span>
+<span id="cb8-83"><a href="#cb8-83" aria-hidden="true"></a>    GPIO.cleanup()</span></code></pre></div>
+<h2 id="refences">Refences</h2>
+<p><a href="https://www.circuitbasics.com/raspberry-pi-lcd-set-up-and-programming-in-python/">LCD Tutorial</a></p>
