@@ -2,7 +2,7 @@
 
 <link rel="stylesheet" type="text/css" href="splendor.css">
 
-# Electronics Study
+# Electronics Pratice Essay
 
 ## Introduction
 
