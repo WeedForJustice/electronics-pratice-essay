@@ -1,4 +1,4 @@
-<!-- To convert this file to HTML, use `pacdoc -t html -o index.html index.md`. -->
+<!-- To convert this file to HTML, use `pandoc -t html -o index.html index.md`. -->
 
 <link rel="stylesheet" type="text/css" href="splendor.css">
 
